@@ -1,7 +1,7 @@
-export const healthCheck = (_req, res) => {
-  res.status(200).json({
+export function healthCheck(req, res) {
+  res.json({
     status: 'ok',
     message: 'SIAP API is running',
     timestamp: new Date().toISOString(),
   });
-};
+}

@@ -1,5 +1,10 @@
-import 'dotenv/config';
+import { config } from 'dotenv';
+import { fileURLToPath } from 'url';
+import path from 'path';
 import { defineConfig } from 'drizzle-kit';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+config({ path: path.resolve(__dirname, '.env') });
 
 export default defineConfig({
   schema: './src/schemas/index.js',
