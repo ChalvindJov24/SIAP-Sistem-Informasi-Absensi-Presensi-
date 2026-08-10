@@ -1,6 +1,6 @@
 import express from 'express';
 import { env } from './config/env.js';
-import { db } from './config/database.js';
+import { db } from './db/connection.js';
 import { sql } from 'drizzle-orm';
 import healthRoutes from './routes/healthRoutes.js';
 

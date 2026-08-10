@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 config({ path: path.resolve(__dirname, '.env') });
 
 export default defineConfig({
-  schema: './src/schemas/index.js',
+  schema: './src/db/schema.js',
   out: './drizzle',
   dialect: 'mysql',
   dbCredentials: {
