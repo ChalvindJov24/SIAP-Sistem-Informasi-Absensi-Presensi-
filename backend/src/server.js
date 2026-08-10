@@ -7,6 +7,7 @@ import { db } from './db/connection.js';
 import { sql } from 'drizzle-orm';
 import healthRoutes from './routes/healthRoutes.js';
 import authRoutes from './routes/authRoutes.js';
+import userRoutes from './routes/userRoutes.js';
 
 const app = express();
 
@@ -46,6 +47,7 @@ app.use(
 
 app.use(healthRoutes);
 app.use(authRoutes);
+app.use(userRoutes);
 
 async function startServer() {
   try {
