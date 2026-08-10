@@ -12,4 +12,7 @@ export const env = {
   dbUser: process.env.DB_USER || 'root',
   dbPassword: process.env.DB_PASSWORD || '',
   dbName: process.env.DB_NAME || 'siap',
+  sessionSecret: process.env.SESSION_SECRET || 'dev_session_secret',
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  nodeEnv: process.env.NODE_ENV || 'development',
 };
