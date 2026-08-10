@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import { ipKeyGenerator } from 'express-rate-limit';
 import { login, logout, me } from '../controllers/authController.js';
 
 const router = Router();
@@ -8,6 +9,8 @@ const router = Router();
 const loginLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 menit
   max: 5,
+  keyGenerator: (req) => ipKeyGenerator(req) + '_' + req.body.username,
+=======
   keyGenerator: (req) => req.ip + '_' + req.body.username,
   standardHeaders: true,
   legacyHeaders: false,
