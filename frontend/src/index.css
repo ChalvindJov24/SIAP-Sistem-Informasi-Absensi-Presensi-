@@ -32,6 +32,15 @@
   --spacing-64: 64px;
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 body {
   margin: 0;
   font-family: var(--font-body);
