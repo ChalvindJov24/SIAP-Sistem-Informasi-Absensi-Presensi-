@@ -33,6 +33,8 @@ export const users = mysqlTable('users', {
   username: varchar('username', { length: 50 }).notNull().unique(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
   isActive: boolean('is_active').notNull().default(true),
+  passwordChangedAt: timestamp('password_changed_at'),
+  lastPasswordResetBy: int('last_password_reset_by').references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
 });

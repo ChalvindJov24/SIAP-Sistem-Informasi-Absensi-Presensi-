@@ -21,7 +21,7 @@ export async function authenticate(req, res, next) {
 
     // Verifikasi ulang ke database: user masih ada & aktif
     const result = await db
-      .select({ isActive: users.isActive })
+      .select({ isActive: users.isActive, passwordChangedAt: users.passwordChangedAt })
       .from(users)
       .where(eq(users.id, req.session.user.id))
       .limit(1);
@@ -46,6 +46,26 @@ export async function authenticate(req, res, next) {
         error: {
           code: 'ACCOUNT_INACTIVE',
           message: 'Akun tidak aktif',
+        },
+      });
+    }
+
+    // Komparasi password_changed_at: jika DB lebih baru dari session, session usang
+    const dbTime = result[0].passwordChangedAt
+      ? new Date(result[0].passwordChangedAt).getTime()
+      : 0;
+    const sessionTime = req.session.user.passwordChangedAt
+      ? new Date(req.session.user.passwordChangedAt).getTime()
+      : 0;
+
+    if (dbTime > sessionTime) {
+      // Password telah diubah — hancurkan session
+      req.session.destroy(() => {});
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sesi usang karena password telah diubah',
         },
       });
     }

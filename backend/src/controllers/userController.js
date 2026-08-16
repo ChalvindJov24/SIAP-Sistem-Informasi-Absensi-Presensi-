@@ -1,7 +1,8 @@
 import { db } from '../db/connection.js';
 import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { createUser } from '../services/userService.js';
+import bcrypt from 'bcryptjs';
+import { createUser, generateRandomPassword } from '../services/userService.js';
 
 /**
  * POST /users — buat akun baru (hanya ADMIN).
@@ -29,6 +30,80 @@ export async function createUserController(req, res) {
         userId: result.userId,
         username: result.username,
         password: result.plainPassword,
+      },
+    });
+  } catch (error) {
+    const status = error.status || 500;
+    return res.status(status).json({
+      success: false,
+      error: {
+        code: error.code || 'INTERNAL_ERROR',
+        message: error.message || 'Terjadi kesalahan server',
+      },
+    });
+  }
+}
+
+/**
+ * PATCH /users/:id/reset-password — reset password user lain (hanya ADMIN).
+ * Tanpa verifikasi password lama. Mengembalikan password plaintext sekali.
+ */
+export async function resetPasswordController(req, res) {
+  try {
+    const userId = Number(req.params.id);
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Parameter id diperlukan',
+        },
+      });
+    }
+
+    // Cek eksistensi user target
+    const target = await db
+      .select({ id: users.id, username: users.username })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (target.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'User tidak ditemukan',
+        },
+      });
+    }
+
+    // Generate password baru (reuse fungsi dari userService)
+    const plainPassword = generateRandomPassword();
+    const passwordHash = await bcrypt.hash(plainPassword, 10);
+
+    // Waktu absolut dari Node.js.
+    // Bulatkan ke detik penuh agar konsisten dengan presisi DATETIME MySQL.
+    const currentTime = new Date();
+    currentTime.setMilliseconds(0);
+
+    // Update password, password_changed_at, dan last_password_reset_by
+    await db
+      .update(users)
+      .set({
+        passwordHash,
+        passwordChangedAt: currentTime,
+        lastPasswordResetBy: req.session.user.id,
+      })
+      .where(eq(users.id, userId));
+
+    return res.json({
+      success: true,
+      data: {
+        userId: target[0].id,
+        username: target[0].username,
+        password: plainPassword,
       },
     });
   } catch (error) {

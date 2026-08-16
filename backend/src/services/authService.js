@@ -15,6 +15,7 @@ export async function verifyLogin(username, password) {
       username: users.username,
       passwordHash: users.passwordHash,
       isActive: users.isActive,
+      passwordChangedAt: users.passwordChangedAt,
       role: roles.name,
     })
     .from(users)
@@ -52,5 +53,6 @@ export async function verifyLogin(username, password) {
     id: user.id,
     username: user.username,
     role: user.role,
+    passwordChangedAt: user.passwordChangedAt,
   };
 }
