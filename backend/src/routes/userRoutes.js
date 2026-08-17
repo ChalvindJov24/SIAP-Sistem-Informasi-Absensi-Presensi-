@@ -4,6 +4,7 @@ import { authorize } from '../middlewares/authorize.js';
 import {
   createUserController,
   deactivateUserController,
+  listStudentsController,
   resetPasswordController,
 } from '../controllers/userController.js';
 
@@ -15,6 +16,14 @@ router.post(
   authenticate,
   authorize(['ADMIN']),
   createUserController
+);
+
+// Hanya ADMIN yang bisa lihat daftar siswa
+router.get(
+  '/users/students',
+  authenticate,
+  authorize(['ADMIN']),
+  listStudentsController
 );
 
 // Hanya ADMIN yang bisa deactivate user

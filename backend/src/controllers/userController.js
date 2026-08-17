@@ -1,5 +1,5 @@
 import { db } from '../db/connection.js';
-import { users } from '../db/schema.js';
+import { users, roles, students } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { createUser, generateRandomPassword } from '../services/userService.js';
@@ -30,6 +30,43 @@ export async function createUserController(req, res) {
         userId: result.userId,
         username: result.username,
         password: result.plainPassword,
+      },
+    });
+  } catch (error) {
+    const status = error.status || 500;
+    return res.status(status).json({
+      success: false,
+      error: {
+        code: error.code || 'INTERNAL_ERROR',
+        message: error.message || 'Terjadi kesalahan server',
+      },
+    });
+  }
+}
+
+/**
+ * GET /users/students — daftar user dengan role SISWA (hanya ADMIN).
+ * JOIN ke tabel students untuk menyertakan fullName.
+ */
+export async function listStudentsController(req, res) {
+  try {
+    const result = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        fullName: students.fullName,
+        role: roles.name,
+        isActive: users.isActive,
+      })
+      .from(users)
+      .innerJoin(roles, eq(users.roleId, roles.id))
+      .innerJoin(students, eq(users.id, students.userId))
+      .where(eq(roles.name, 'SISWA'));
+
+    return res.json({
+      success: true,
+      data: {
+        students: result,
       },
     });
   } catch (error) {
