@@ -48,6 +48,30 @@ export async function logout() {
 }
 
 /**
+ * Ubah password sendiri (Fitur A).
+ * Mengembalikan { message } dari response data.
+ */
+export async function changePassword(oldPassword, newPassword) {
+  const response = await fetch(`${BASE_URL}/auth/password`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    credentials: 'include',
+    body: JSON.stringify({ oldPassword, newPassword }),
+  });
+
+  const body = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const err = new Error(body?.error?.message || 'Gagal mengubah kata sandi');
+    err.code = body?.error?.code || 'UNKNOWN_ERROR';
+    err.status = response.status;
+    throw err;
+  }
+
+  return body.data;
+}
+
+/**
  * Ambil data user yang sedang login.
  * Mengembalikan { id, username, role } atau null jika belum login.
  */
