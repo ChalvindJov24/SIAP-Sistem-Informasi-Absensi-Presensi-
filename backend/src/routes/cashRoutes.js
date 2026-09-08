@@ -6,6 +6,8 @@ import {
   listCashPeriodsController,
   createCashPaymentController,
   getCashPeriodByIdController,
+  listPaymentsForPeriodController,
+  updateCashPeriodController,
 } from '../controllers/cashController.js';
 
 const router = Router();
@@ -31,6 +33,22 @@ router.get(
   authenticate,
   authorize(['ADMIN', 'BENDAHARA']),
   getCashPeriodByIdController
+);
+
+// Daftar status pembayaran semua siswa untuk satu periode — ADMIN & BENDAHARA
+router.get(
+  '/cash-periods/:id/payments',
+  authenticate,
+  authorize(['ADMIN', 'BENDAHARA']),
+  listPaymentsForPeriodController
+);
+
+// Edit periode kas — hanya ADMIN
+router.patch(
+  '/cash-periods/:id',
+  authenticate,
+  authorize(['ADMIN']),
+  updateCashPeriodController
 );
 
 // Catat pembayaran siswa untuk satu periode (ATOMIC) — ADMIN & BENDAHARA

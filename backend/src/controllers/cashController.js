@@ -3,6 +3,7 @@ import {
   listCashPeriods,
   createCashPayment,
   getCashPeriodById,
+  listPaymentsForPeriod,
 } from '../services/cashService.js';
 
 /**
@@ -296,6 +297,121 @@ export async function getCashPeriodByIdController(req, res) {
     return res.json({ success: true, data: period });
   } catch (error) {
     console.error('Error in getCashPeriodByIdController:', error);
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Terjadi kesalahan server',
+      },
+    });
+  }
+}
+
+export async function listPaymentsForPeriodController(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'id harus berupa integer positif',
+        },
+      });
+    }
+
+    const payments = await listPaymentsForPeriod(id);
+
+    if (!payments) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Periode kas tidak ditemukan',
+        },
+      });
+    }
+
+    return res.json({ success: true, data: payments });
+  } catch (error) {
+    console.error('Error in listPaymentsForPeriodController:', error);
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Terjadi kesalahan server',
+      },
+    });
+  }
+}
+
+export async function updateCashPeriodController(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'id harus berupa integer positif',
+        },
+      });
+    }
+
+    const { dueDate, amount } = req.body;
+
+    // Jika body mengandung startDate atau endDate, reject langsung
+    if (req.body.startDate !== undefined || req.body.endDate !== undefined) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Tidak bisa mengubah startDate atau endDate periode',
+        },
+      });
+    }
+
+    // Jika ada upaya mengubah amount, cek apakah sudah ada pembayaran
+    if (amount !== undefined) {
+      // Cek of of there are any payments for this period
+      const existingPayments = await db
+        .select({ id: cashPayments.id })
+        .from(cashPayments)
+        .where(eq(cashPayments.periodId, id));
+
+      if (existingPayments.length > 0) {
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: 'CONFLICT',
+            message: 'Tidak bisa mengubah nominal karena sudah ada pembayaran untuk periode ini',
+          },
+        });
+      }
+    }
+
+    // Lakukan pembaruan periode
+    const [updated] = await db
+      .update(cashPeriods)
+      .set({ dueDate, amount: amount ? Number(amount) : undefined })
+      .where(eq(cashPeriods.id, id));
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Periode kas tidak ditemukan',
+        },
+      });
+    }
+
+    // Kembalikan data periode yang sudah diperbarui
+    const period = await getCashPeriodById(id);
+
+    return res.json({ success: true, data: period });
+  } catch (error) {
+    console.error('Error in updateCashPeriodController:', error);
     return res.status(500).json({
       success: false,
       error: {

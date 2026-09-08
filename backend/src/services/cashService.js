@@ -236,6 +236,69 @@ export async function getCashPeriodById(periodId) {
  * - Buat baris cash_payments + cash_transactions (type INCOME) dalam 1 transaction.
  * - reference_payment_id cash_transactions = id cash_payments.
  */
+export async function listPaymentsForPeriod(periodId) {
+  // Verifikasi periode ada
+  const periodRows = await db
+    .select({ id: cashPeriods.id })
+    .from(cashPeriods)
+    .where(eq(cashPeriods.id, periodId))
+    .limit(1);
+
+  if (periodRows.length === 0) return null;
+
+  // Ambil semua siswa aktif (urut abjad agar rapi di UI)
+  const allActiveStudents = await db
+    .select({
+      id: students.id,
+      fullName: students.fullName,
+    })
+    .from(students)
+    .where(eq(students.status, 'ACTIVE'))
+    .orderBy(students.fullName);
+
+  // Ambil semua pembayaran untuk periode ini
+  const payments = await db
+    .select({
+      id: cashPayments.id,
+      studentId: cashPayments.studentId,
+      amountPaid: cashPayments.amountPaid,
+      paymentDate: cashPayments.paymentDate,
+    })
+    .from(cashPayments)
+    .where(eq(cashPayments.periodId, periodId));
+
+  // Buat lookup map untuk performa O(1)
+  const paymentMap = new Map();
+  for (const p of payments) {
+    paymentMap.set(p.studentId, p);
+  }
+
+  // Gabungkan (simulasi LEFT JOIN): untuk setiap siswa aktif,
+  // cek apakah ada baris pembayaran di cashPayments
+  return allActiveStudents.map((student) => {
+    const payment = paymentMap.get(student.id);
+    if (payment) {
+      return {
+        studentId: student.id,
+        fullName: student.fullName,
+        hasPaid: true,
+        payment: {
+          id: payment.id,
+          amountPaid: formatAmount(payment.amountPaid),
+          paymentDate: formatLocalDate(payment.paymentDate),
+        },
+      };
+    } else {
+      return {
+        studentId: student.id,
+        fullName: student.fullName,
+        hasPaid: false,
+        payment: null,
+      };
+    }
+  });
+}
+
 export async function createCashPayment({ studentId, periodId, paymentDate }, receivedBy) {
   // Langkah 1: dapatkan periode by ID
   const periodRows = await db
