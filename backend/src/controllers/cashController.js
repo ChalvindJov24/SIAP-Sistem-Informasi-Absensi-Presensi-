@@ -4,6 +4,11 @@ import {
   createCashPayment,
   getCashPeriodById,
   listPaymentsForPeriod,
+  createCashTransaction,
+  listCashTransactions,
+  softDeleteCashTransaction,
+  getStudentCashPayments,
+  getCashMe,
 } from '../services/cashService.js';
 
 /**
@@ -412,6 +417,227 @@ export async function updateCashPeriodController(req, res) {
     return res.json({ success: true, data: period });
   } catch (error) {
     console.error('Error in updateCashPeriodController:', error);
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Terjadi kesalahan server',
+      },
+    });
+  }
+}
+
+export async function createCashTransactionController(req, res) {
+  try {
+    const { type, amount, description } = req.body;
+
+    // Validasi type harus INCOME atau EXPENSE
+    if (type !== 'INCOME' && type !== 'EXPENSE') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'type wajib INCOME atau EXPENSE',
+        },
+      });
+    }
+
+    // Validasi amount harus positif
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'amount wajib berupa angka positif',
+        },
+      });
+    }
+
+    // received_by diambil dari session, bukan dari body
+    const transaction = await createCashTransaction(
+      { type, amount, description },
+      req.user.id
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: transaction,
+    });
+  } catch (error) {
+    const actualError = error.cause || error;
+    const errorCode = actualError.code || '';
+    const errorStatus = actualError.status || 500;
+    return res.status(errorStatus).json({
+      success: false,
+      error: {
+        code: errorCode || 'INTERNAL_ERROR',
+        message: actualError.message || 'Terjadi kesalahan server',
+      },
+    });
+  }
+}
+
+export async function listCashTransactionsController(req, res) {
+  try {
+    const { type, startDate, endDate } = req.query;
+
+    // Validasi format type
+    if (type !== undefined && type !== 'INCOME' && type !== 'EXPENSE') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'type wajib INCOME atau EXPENSE',
+        },
+      });
+    }
+
+    // Validasi format tanggal jika dikirim
+    if (startDate !== undefined) {
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
+        Number.isNaN(new Date(`${startDate}T00:00:00`).getTime())
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'startDate harus berformat YYYY-MM-DD yang valid',
+          },
+        });
+      }
+    }
+
+    if (endDate !== undefined) {
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(endDate) ||
+        Number.isNaN(new Date(`${endDate}T00:00:00`).getTime())
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'endDate harus berformat YYYY-MM-DD yang valid',
+          },
+        });
+      }
+    }
+
+    const result = await listCashTransactions({ type, startDate, endDate });
+
+    return res.json({
+      success: true,
+      data: result.data,
+      currentBalance: result.currentBalance,
+    });
+  } catch (error) {
+    console.error('Error in listCashTransactionsController:', error);
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Terjadi kesalahan server',
+      },
+    });
+  }
+}
+
+export async function softDeleteCashTransactionController(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'id harus berupa integer positif',
+        },
+      });
+    }
+
+    const result = await softDeleteCashTransaction(id);
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Transaksi tidak ditemukan',
+        },
+      });
+    }
+
+    // Jika soft-delete gagal karena referencePaymentId bukan null, error 409 sudah dilempar di service
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error in softDeleteCashTransactionController:', error);
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Terjadi kesalahan server',
+      },
+    });
+  }
+}
+
+export async function getStudentCashPaymentsController(req, res) {
+  try {
+    const studentId = Number(req.params.id);
+    if (!Number.isInteger(studentId) || studentId <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'id siswa harus berupa integer positif',
+        },
+      });
+    }
+
+    const payments = await getStudentCashPayments(studentId);
+
+    if (!payments) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Siswa tidak ditemukan',
+        },
+      });
+    }
+
+    return res.json({ success: true, data: payments });
+  } catch (error) {
+    console.error('Error in getStudentCashPaymentsController:', error);
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Terjadi kesalahan server',
+      },
+    });
+  }
+}
+
+export async function getCashMeController(req, res) {
+  try {
+    const userId = req.user.id;
+    const result = await getCashMe(userId);
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Data siswa tidak ditemukan untuk user ini',
+        },
+      });
+    }
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error in getCashMeController:', error);
     return res.status(500).json({
       success: false,
       error: {

@@ -236,44 +236,7 @@ export async function getCashPeriodById(periodId) {
  * - Buat baris cash_payments + cash_transactions (type INCOME) dalam 1 transaction.
  * - reference_payment_id cash_transactions = id cash_payments.
  */
-export async function listPaymentsForPeriod(periodId) {
-  // Verifikasi periode ada
-  const periodRows = await db
-    .select({ id: cashPeriods.id })
-    .from(cashPeriods)
-    .where(eq(cashPeriods.id, periodId))
-    .limit(1);
-
-  if (periodRows.length === 0) return null;
-
-  // Ambil semua siswa aktif (urut abjad agar rapi di UI)
-  const allActiveStudents = await db
-    .select({
-      id: students.id,
-      fullName: students.fullName,
-    })
-    .from(students)
-    .where(eq(students.status, 'ACTIVE'))
-    .orderBy(students.fullName);
-
-  // Ambil semua pembayaran untuk periode ini
-  const payments = await db
-    .select({
-      id: cashPayments.id,
-      studentId: cashPayments.studentId,
-      amountPaid: cashPayments.amountPaid,
-      paymentDate: cashPayments.paymentDate,
-    })
-    .from(cashPayments)
-    .where(eq(cashPayments.periodId, periodId));
-
-  // Buat lookup map untuk performa O(1)
-  const paymentMap = new Map();
-  for (const p of payments) {
-    paymentMap.set(p.studentId, p);
-  }
-
-  // Gabungkan (simulasi LEFT JOIN): untuk setiap siswa aktif,
+// Gabungkan (simulasi LEFT JOIN): untuk setiap siswa aktif,
   // cek apakah ada baris pembayaran di cashPayments
   return allActiveStudents.map((student) => {
     const payment = paymentMap.get(student.id);
@@ -297,6 +260,55 @@ export async function listPaymentsForPeriod(periodId) {
       };
     }
   });
+}
+
+export async function createCashTransaction({ type, amount, description }, createdBy) {
+  // Validasi type harus INCOME atau EXPENSE
+  if (type !== 'INCOME' && type !== 'EXPENSE') {
+    const err = new Error('type wajib INCOME atau EXPENSE');
+    err.status = 400;
+    err.code = 'VALIDATION_ERROR';
+    throw err;
+  }
+
+  // Validasi amount harus positif
+  const numericAmount = Number(amount);
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    const err = new Error('amount wajib berupa angka positif');
+    err.status = 400;
+    err.code = 'VALIDATION_ERROR';
+    throw err;
+  }
+
+  // Jika EXPENSE, guard saldo negatif
+  if (type === 'EXPENSE') {
+    const currentBalance = await getCurrentBalance();
+    if (currentBalance - numericAmount < 0) {
+      const err = new Error('Saldo kas tidak mencukupi untuk mengevaluasi EXPENSE ini');
+      err.status = 422;
+      err.code = 'INSUFFICIENT_BALANCE';
+      throw err;
+    }
+  }
+
+  const [result] = await db
+    .insert(cashTransactions)
+    .values({
+      type,
+      amount: numericAmount,
+      description,
+      createdBy,
+      referencePaymentId: null, // transaksi manual selalu null
+    });
+
+  return {
+    id: result.insertId,
+    type,
+    amount: formatAmount(numericAmount),
+    description,
+    createdBy,
+    createdAt: new Date(),
+  };
 }
 
 export async function createCashPayment({ studentId, periodId, paymentDate }, receivedBy) {
@@ -357,4 +369,140 @@ export async function createCashPayment({ studentId, periodId, paymentDate }, re
       receivedBy,
     };
   });
+}
+
+export async function listCashTransactions({ type, startDate, endDate } = {}) {
+  const conditions = [];
+
+  // Filter type jika ada
+  if (type) conditions.push(eq(cashTransactions.type, type));
+
+  // Filter berdasarkan tanggal
+  if (startDate) conditions.push(gte(cashTransactions.createdAt, startDate));
+  if (endDate) conditions.push(lte(cashTransactions.createdAt, endDate));
+
+  // Exclude soft-deleted rows
+  conditions.push(isNull(cashTransactions.deletedAt));
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  // Ambil transaksi yang tidak soft-deleted
+  const rows = await db
+    .select({
+      id: cashTransactions.id,
+      type: cashTransactions.type,
+      amount: cashTransactions.amount,
+      description: cashTransactions.description,
+      createdBy: cashTransactions.createdBy,
+      createdAt: cashTransactions.createdAt,
+    })
+    .from(cashTransactions)
+    .where(whereClause)
+    .orderBy(desc(cashTransactions.createdAt));
+
+  // Hitung currentBalance: SUM(INCOME) - SUM(EXPENSE) WHERE deleted_at IS NULL
+  const balanceRows = await db
+    .select({
+      total: sql`SUM(CASE WHEN ${cashTransactions.type} = 'INCOME' THEN ${cashTransactions.amount} ELSE -${cashTransactions.amount} END)`,
+    })
+    .from(cashTransactions)
+    .where(isNull(cashTransactions.deletedAt));
+
+  const currentBalance = Number(balanceRows[0]?.total) || 0;
+
+  return {
+    data: rows.map((row) => ({
+      id: row.id,
+      type: row.type,
+      amount: formatAmount(row.amount),
+      description: row.description,
+      createdBy: row.createdBy,
+      createdAt: formatLocalDate(row.createdAt),
+    })),
+    currentBalance: formatAmount(currentBalance),
+  };
+}
+
+export async function softDeleteCashTransaction(transactionId) {
+  // Cek transaksi ada
+  const existing = await db
+    .select({
+      id: cashTransactions.id,
+      referencePaymentId: cashTransactions.referencePaymentId,
+    })
+    .from(cashTransactions)
+    .where(eq(cashTransactions.id, transactionId))
+    .limit(1);
+
+  if (existing.length === 0) return null;
+
+  // Jangan izinkan delete jika ini transaksi yang terhubung ke payment
+  if (existing[0].referencePaymentId !== null) {
+    const err = new Error('Transaksi pembayaran tidak bisa dihapus manual');
+    err.status = 409;
+    err.code = 'CONFLICT';
+    throw err;
+  }
+
+  await db
+    .update(cashTransactions)
+    .set({ deletedAt: new Date() })
+    .where(eq(cashTransactions.id, transactionId));
+
+  return { id: transactionId, success: true };
+}
+
+export async function getStudentCashPayments(studentId) {
+  // Verifikasi siswa ada dan ACTIVE
+  const studentRows = await db
+    .select({ id: students.id })
+    .from(students)
+    .where(and(eq(students.id, studentId), eq(students.status, 'ACTIVE')))
+    .limit(1);
+
+  if (studentRows.length === 0) return null;
+
+  // Ambil semua pembayaran untuk siswa ini, join dengan cashPeriods
+  const payments = await db
+    .select({
+      id: cashPayments.id,
+      periodId: cashPayments.periodId,
+      amountPaid: cashPayments.amountPaid,
+      paymentDate: cashPayments.paymentDate,
+      startDate: cashPeriods.startDate,
+      endDate: cashPeriods.endDate,
+    })
+    .from(cashPayments)
+    .innerJoin(cashPeriods, eq(cashPayments.periodId, cashPeriods.id))
+    .where(eq(cashPayments.studentId, studentId))
+    .orderBy(desc(cashPayments.paymentDate));
+
+  return payments.map((p) => ({
+    id: p.id,
+    periodId: p.periodId,
+    amountPaid: formatAmount(p.amountPaid),
+    paymentDate: formatLocalDate(p.paymentDate),
+    period: {
+      startDate: formatLocalDate(p.startDate),
+      endDate: formatLocalDate(p.endDate),
+    },
+  }));
+}
+
+export async function getCashMe(userId) {
+  // Cari student record berdasarkan userId
+  const studentRows = await db
+    .select({ id: students.id })
+    .from(students)
+    .where(eq(students.userId, userId))
+    .limit(1);
+
+  if (studentRows.length === 0) return null;
+
+  const studentId = studentRows[0].id;
+  const payments = await getStudentCashPayments(studentId);
+
+  if (!payments) return { studentId, payments: [] };
+
+  return { studentId, payments };
 }
