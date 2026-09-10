@@ -229,39 +229,6 @@ export async function getCashPeriodById(periodId) {
   };
 }
 
-/**
- * FITUR 4: catat pembayaran siswa untuk satu periode (ATOMIC).
- * - Ambil periode by id; null => return null (controller map 404).
- * - amount_paid di-SNAPSHOT dari cash_periods.amount (client TIDAK kirim nominal).
- * - Buat baris cash_payments + cash_transactions (type INCOME) dalam 1 transaction.
- * - reference_payment_id cash_transactions = id cash_payments.
- */
-// Gabungkan (simulasi LEFT JOIN): untuk setiap siswa aktif,
-  // cek apakah ada baris pembayaran di cashPayments
-  return allActiveStudents.map((student) => {
-    const payment = paymentMap.get(student.id);
-    if (payment) {
-      return {
-        studentId: student.id,
-        fullName: student.fullName,
-        hasPaid: true,
-        payment: {
-          id: payment.id,
-          amountPaid: formatAmount(payment.amountPaid),
-          paymentDate: formatLocalDate(payment.paymentDate),
-        },
-      };
-    } else {
-      return {
-        studentId: student.id,
-        fullName: student.fullName,
-        hasPaid: false,
-        payment: null,
-      };
-    }
-  });
-}
-
 export async function createCashTransaction({ type, amount, description }, createdBy) {
   // Validasi type harus INCOME atau EXPENSE
   if (type !== 'INCOME' && type !== 'EXPENSE') {
